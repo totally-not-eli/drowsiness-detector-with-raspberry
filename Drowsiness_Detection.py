@@ -11,27 +11,31 @@ import time
 import tkinter as tk
 import pygame
 
-
-
 from check_gps import retrieve_gps_location
 from input_number import UserInputWindow
+
+
+pygame.init()
+pygame.mixer.init()
 
 # Initialize serial port
 ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
 gps_location = retrieve_gps_location()
 
+def reinitiliaze():
+    pygame.init()
+    pygame.mixer.init()
+    
 def send_command(command):
     ser.write((command + '\r\n').encode())
     time.sleep(1)
     response = ser.read(ser.inWaiting()).decode()
     return response
     
-def play_sound(is_threaded=True):
-	file_path_annoying_sound = "/usr/share/sounds/alsa/Front_Center.wav"
+def play_sound(is_threaded=True, is_new=False):
+	file_path_annoying_sound = "/usr/share/sounds/alsa/buzzer.mp3"
 	file_path_selos_sound = "/usr/share/sounds/alsa/selos.mp3"
 	if is_threaded == True:
-		pygame.init()
-		pygame.mixer.init()
 		try:
 			pygame.mixer.music.load(file_path_selos_sound)
 			pygame.mixer.music.play()
@@ -44,9 +48,6 @@ def play_sound(is_threaded=True):
 			pygame.quit()
    
 	elif is_threaded == False:
-		def thread_play_sound():
-			pygame.init()
-			pygame.mixer.init()
 			try:
 				pygame.mixer.music.load(file_path_annoying_sound)
 				pygame.mixer.music.play()
@@ -57,27 +58,34 @@ def play_sound(is_threaded=True):
 			finally:
 				pygame.mixer.quit()
 				pygame.quit()
-		
-		thread = threading.Thread(target=thread_play_sound)
-		thread.start()
 	
 	else:
 		print("NO SOUND HERE")
 			
     
-def send_sms(number="+639763568298", message=""):
+def send_sms(number="+639763568298", message="", sound_only=False):
     def send_sms_thread():
         send_command('AT+CMGF=1')  # Set SMS text mode
         send_command('AT+CMGS="{}"'.format(number))  # Set the phone number
         time.sleep(1)
         send_command(message + chr(26))  # Send the message and terminate with Ctrl+Z
+        reinitiliaze()
         play_sound(is_threaded=True)
+        
         print(number)
         print(message)
         print("SENT...")
+        
+        
+    def send_sound():
+        play_sound(is_threaded=False)
 
+    if sound_only:
     # Create and start the thread for sending SMS
-    sms_thread = threading.Thread(target=send_sms_thread)
+        sms_thread = threading.Thread(target=send_sound)
+        
+    else:
+        sms_thread = threading.Thread(target=send_sms_thread)
     sms_thread.start()
     
 
@@ -132,24 +140,27 @@ def process_frame():
                 flag += 1
                 print (flag)
                 if flag >= frame_check_high:
-                    cv2.putText(frame, "****************ALERT! HIGH DROWSINESS****************", (10, 30),
+                    cv2.putText(frame, f"HIGHLY DROWSY: THRESHOLD {flag}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    cv2.putText(frame, "****************ALERT! HIGH DROWSINESS****************", (10,325),
+                    cv2.putText(frame, f"ASPECT RATIO: {ear:.5f}", (10,200),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                     send_sms(number=full_number, message=f"PERSON HIGHLY DROWSY! SENDING MESSAGE TO EMERGENCY CONTACT LatLong here: {gps_location}")
-                elif flag >= frame_check_mid:
-                    cv2.putText(frame, "****************ALERT! MID DROWSINESS****************", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    cv2.putText(frame, "****************ALERT! MID DROWSINESS****************", (10,325),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    play_sound(is_threaded=False)
                 elif flag >= frame_check:
-                    cv2.putText(frame, "****************ALERT! LOW DROWSINESS****************", (10, 30),
+                    cv2.putText(frame, f"LIGHTLY DROWSY: THRESHOLD {flag}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    cv2.putText(frame, "****************ALERT! LOW DROWSINESS****************", (10,325),
+                    cv2.putText(frame, f"ASPECT RATIO: {ear:.5f}", (10,200),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    play_sound(is_threaded=False)
+                    send_sms(sound_only=True)
+                else:
+                    cv2.putText(frame, f"THRESHOLD {flag}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    cv2.putText(frame, f"ASPECT RATIO: {ear:.5f}", (10,200),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             else:
+                cv2.putText(frame, f"THRESHOLD {flag}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.putText(frame, f"ASPECT RATIO: {ear:.5f}", (10,200),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                 flag = 0
         cv2.imshow("Frame", frame)
     
